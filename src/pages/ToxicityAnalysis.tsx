@@ -1,14 +1,51 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Header } from '@/components/Header';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Header } from "@/components/Header";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, AlertTriangle, Loader2 } from "lucide-react";
+
+/** Base API fiable (prod + dev) */
+const API_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, "") ||
+  (window.location.hostname === "localhost"
+    ? "http://127.0.0.1:8000/api"
+    : "https://pasteur-medicheck-backend.onrender.com/api");
+
+/** Helper: récupère et garantit du JSON (messages d’erreur clairs) */
+async function postJSON(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  // On lit toujours le texte d’abord pour diagnostiquer facilement
+  const raw = await res.text();
+
+  if (!res.ok) {
+    try {
+      const parsed = JSON.parse(raw);
+      const msg = typeof parsed === "object" && parsed?.error ? parsed.error : raw;
+      throw new Error(`API ${res.status}: ${String(msg).slice(0, 300)}`);
+    } catch {
+      throw new Error(`API ${res.status}: ${raw.slice(0, 300)}`);
+    }
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Réponse non-JSON depuis l'API (${url}). Début reçu: ${raw.slice(0, 80)}`
+    );
+  }
+}
 
 const ToxicityAnalysis = () => {
   const navigate = useNavigate();
-  const [drugName, setDrugName] = useState('');
+  const [drugName, setDrugName] = useState("");
   const [toxicity, setToxicity] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,29 +57,20 @@ const ToxicityAnalysis = () => {
     setError(null);
     setToxicity(null);
 
+    const url = `${API_BASE}/toxicite/`; // <- API absolue (barre finale incluse)
+
     try {
-      const response = await fetch('/api/toxicite/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: drugName }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de l’analyse.');
-      }
-
-      setToxicity(data.toxicite || 'Non disponible');
+      const json = await postJSON(url, { name: drugName.trim() });
+      setToxicity(json?.toxicite || "Non disponible");
     } catch (err: any) {
-      setError(err.message || 'Erreur inconnue.');
+      setError(err?.message || "Erreur lors de l’analyse.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') checkToxicity();
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") checkToxicity();
   };
 
   return (
@@ -52,7 +80,7 @@ const ToxicityAnalysis = () => {
       <main className="max-w-3xl mx-auto p-6">
         <div className="mb-8 animate-fade-in">
           <Button
-            onClick={() => navigate('/')}
+            onClick={() => navigate("/")}
             variant="outline"
             className="group border-pasteur-neutral/20 hover:border-pasteur-mint/40 hover:bg-white/80 text-pasteur-text rounded-xl px-6 py-3 transition-all duration-300 hover:shadow-lg backdrop-blur-sm"
           >
@@ -76,7 +104,7 @@ const ToxicityAnalysis = () => {
               type="text"
               value={drugName}
               onChange={(e) => setDrugName(e.target.value)}
-              onKeyDown={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Ex: Abacavir"
               className="flex-1 border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pasteur-mint/60 text-pasteur-text shadow-sm"
             />
@@ -111,3 +139,4 @@ const ToxicityAnalysis = () => {
 };
 
 export default ToxicityAnalysis;
+
